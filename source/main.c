@@ -5,6 +5,7 @@
 
 // Include the main libnx system header, for Switch development
 #include <switch.h>
+#include <curl/curl.h>
 
 // Main program entrypoint
 int main(int argc, char* argv[])
@@ -24,7 +25,7 @@ int main(int argc, char* argv[])
     padInitializeDefault(&pad);
 
     // Other initialization goes here. As a demonstration, we print hello world.
-    printf("Hello World!\n");
+    printf("Speed Test utility for the Nintendo Switch!\n");
 
     // Main loop
     while (appletMainLoop())
