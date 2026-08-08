@@ -5,7 +5,38 @@
 
 // Include the main libnx system header, for Switch development
 #include <switch.h>
+
 #include <curl/curl.h>
+
+// This example shows how to use libcurl. For more examples, see the official examples: https://curl.haxx.se/libcurl/c/example.html
+
+void network_request(void) {
+    CURL *curl;
+    CURLcode res;
+
+    printf("curl init\n");
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+
+    curl = curl_easy_init();
+    if (curl) {
+        curl_easy_setopt(curl, CURLOPT_URL, "https://example.com/");
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx curl example/1.0");
+        // Add any other options here.
+
+        printf("curl_easy_perform\n");
+        consoleUpdate(NULL);
+
+        res = curl_easy_perform(curl);
+        if (res != CURLE_OK) printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+
+        // In an actual app you should return an error on failure, following cleanup.
+
+        printf("cleanup\n");
+        curl_easy_cleanup(curl);
+    }
+
+    curl_global_cleanup();
+}
 
 // Main program entrypoint
 int main(int argc, char* argv[])
@@ -24,11 +55,14 @@ int main(int argc, char* argv[])
     PadState pad;
     padInitializeDefault(&pad);
 
-    // Other initialization goes here. As a demonstration, we print hello world.
-    printf("Speed Test utility for the Nintendo Switch!\n");
+    socketInitializeDefault();
+
+    printf("Speed test program for the Nintendo Switch!\n");
+
+    network_request();
 
     // Main loop
-    while (appletMainLoop())
+    while(appletMainLoop())
     {
         // Scan the gamepad. This should be done once for each frame
         padUpdate(&pad);
@@ -46,6 +80,7 @@ int main(int argc, char* argv[])
         consoleUpdate(NULL);
     }
 
+    socketExit();
     // Deinitialize and clean up resources used by the console (important!)
     consoleExit(NULL);
     return 0;
