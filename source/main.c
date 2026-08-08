@@ -8,16 +8,75 @@
 
 #include <curl/curl.h>
 
+// #define SERVER_URL "https://scaleway.testdebit.info/10G/10G.iso" //internet speed test
 #define SERVER_URL "http://192.168.0.179/big_file"
-#define DOWNLOAD_TIME 10
+
+#define DOWNLOAD_TIME 25
+#define MAX_SPEED_SAMPLE_INTERVAL 2000 // milliseconds
+
+enum currentState {
+    MENU,
+    DOWNLOAD_TEST,
+    UPLOAD_TEST
+};
 
 // This example shows how to use libcurl. For more examples, see the official examples: https://curl.haxx.se/libcurl/c/example.html
+u64 getTimeMs() {
+    return (armGetSystemTick() * 1000) / armGetSystemTickFreq();
+}
 
-u32 downloadTest(void) {
+void format_bandwidth(double bytes_per_sec, char *buf, size_t max_len) {
+    const char *units[] = {"bps", "Kbps", "Mbps", "Gbps"};
+    int i = 0;
+    while (bytes_per_sec >= 1024.0 && i < 4) {
+        bytes_per_sec /= 1024.0;
+        i++;
+    }
+    snprintf(buf, max_len, "%.2f %s", bytes_per_sec * 8, units[i]);
+}
+
+static size_t cb(char *data, size_t size, size_t nmemb, void *speed)
+{
+    const size_t realsize = nmemb * size;
+    static size_t bytesInLastSecond = 0;
+    static u64 lastTime = 0;
+    const u64 currentTime = getTimeMs();
+
+    curl_off_t* maxDownloadSpeed = (curl_off_t*)speed;
+
+    bytesInLastSecond += realsize;
+
+    if(lastTime == 0) { // prevent the time difference from being unpredictable
+        lastTime = getTimeMs();
+        bytesInLastSecond = 0;
+    }
+
+    if(currentTime - lastTime > MAX_SPEED_SAMPLE_INTERVAL) { // calculate time difference
+        curl_off_t calculatedSpeed = (bytesInLastSecond * 1000) / (currentTime - lastTime);
+
+        if(calculatedSpeed > *maxDownloadSpeed)
+            *maxDownloadSpeed = calculatedSpeed;
+        
+        lastTime = currentTime;
+        bytesInLastSecond = 0;
+
+        char buff[512];
+
+        format_bandwidth((double)calculatedSpeed, buff, sizeof(buff));
+        printf("Current speed: %s\n", buff);
+        consoleUpdate(NULL);
+    }
+ 
+    return realsize;
+}
+
+curl_off_t downloadTest(void) {
     CURL *curl;
     CURLcode res;
 
-    printf("curl init\n");
+    curl_off_t maxDownloadSpeed = 0;
+    curl_off_t averageSpeed = -1;
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     curl = curl_easy_init();
@@ -26,20 +85,38 @@ u32 downloadTest(void) {
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx curl speedtest/1.0");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIME);
         // Add any other options here.
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&maxDownloadSpeed);
 
         printf("Downloading file now, please wait %d seconds\n", DOWNLOAD_TIME);
         consoleUpdate(NULL);
 
         res = curl_easy_perform(curl);
-        if (res != CURLE_OK) printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        if (res != CURLE_OK && res != CURLE_OPERATION_TIMEDOUT) {
+            printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+            curl_easy_cleanup(curl);
+            return -1;
+        }
 
-        // In an actual app you should return an error on failure, following cleanup.
-
-        printf("Downloaded file in xxxx seconds\nCleaning up\n");
+        res = curl_easy_getinfo(curl, CURLINFO_SPEED_DOWNLOAD_T, &averageSpeed);
+        if(res != CURLE_OK) {
+            printf("Failed to get average download speed\n");
+            curl_easy_cleanup(curl);
+            return -1;
+        }
+        
         curl_easy_cleanup(curl);
     }
 
     curl_global_cleanup();
+
+    char buffAverage[512];
+    char buffMax[512];
+
+    format_bandwidth((double)averageSpeed, buffAverage, sizeof(buffAverage));
+    format_bandwidth((double)maxDownloadSpeed, buffMax, sizeof(buffMax));
+
+    printf("Average download speed: %s, maximum speed: %s\n\n", buffAverage, buffMax);
 
     return -1;
 }
@@ -63,9 +140,10 @@ int main(int argc, char* argv[])
 
     socketInitializeDefault();
 
-    printf("Speed test program for the Nintendo Switch!\n");
+    printf("Speed test program for the Nintendo Switch!\n\n");
 
-    network_request();
+    int state = MENU;
+    int lastMenuState = -5;
 
     // Main loop
     while(appletMainLoop())
@@ -80,14 +158,38 @@ int main(int argc, char* argv[])
         if (kDown & HidNpadButton_Plus)
             break; // break in order to return to hbmenu
 
-        // Your code goes here
-        downloadTest();
+        switch (state)
+        {
+        case MENU:
+            if(kDown & HidNpadButton_B)
+                goto exitProgram;
+            if(kDown & HidNpadButton_A) {
+                state = DOWNLOAD_TEST;
+                break;
+            }
 
-        break;
+            if(lastMenuState != state) {
+                printf("Press A to start the download test\nPress B to quit\n\n");
+            }
+            break;
+
+        case DOWNLOAD_TEST:
+            state = MENU;
+            printf("Starting download test\n");
+            downloadTest();
+            continue; // prevents lastMenuState being updated
+
+        default:
+            break;
+        }
+
+        lastMenuState = state;
 
         // Update the console, sending a new frame to the display
         consoleUpdate(NULL);
     }
+
+exitProgram:
 
     socketExit();
     // Deinitialize and clean up resources used by the console (important!)
