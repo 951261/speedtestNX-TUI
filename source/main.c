@@ -8,9 +8,12 @@
 
 #include <curl/curl.h>
 
+#define SERVER_URL "http://192.168.0.179/big_file"
+#define DOWNLOAD_TIME 10
+
 // This example shows how to use libcurl. For more examples, see the official examples: https://curl.haxx.se/libcurl/c/example.html
 
-void network_request(void) {
+u32 downloadTest(void) {
     CURL *curl;
     CURLcode res;
 
@@ -19,11 +22,12 @@ void network_request(void) {
 
     curl = curl_easy_init();
     if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, "https://example.com/");
-        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx curl example/1.0");
+        curl_easy_setopt(curl, CURLOPT_URL, SERVER_URL);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx curl speedtest/1.0");
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIME);
         // Add any other options here.
 
-        printf("curl_easy_perform\n");
+        printf("Downloading file now, please wait %d seconds\n", DOWNLOAD_TIME);
         consoleUpdate(NULL);
 
         res = curl_easy_perform(curl);
@@ -31,11 +35,13 @@ void network_request(void) {
 
         // In an actual app you should return an error on failure, following cleanup.
 
-        printf("cleanup\n");
+        printf("Downloaded file in xxxx seconds\nCleaning up\n");
         curl_easy_cleanup(curl);
     }
 
     curl_global_cleanup();
+
+    return -1;
 }
 
 // Main program entrypoint
@@ -75,6 +81,9 @@ int main(int argc, char* argv[])
             break; // break in order to return to hbmenu
 
         // Your code goes here
+        downloadTest();
+
+        break;
 
         // Update the console, sending a new frame to the display
         consoleUpdate(NULL);
