@@ -9,7 +9,9 @@
 #include <curl/curl.h>
 
 // #define SERVER_URL "https://scaleway.testdebit.info/10G/10G.iso" //internet speed test
-#define SERVER_URL "http://192.168.0.179/big_file"
+// #define SERVER_URL "http://192.168.0.179/big_file"
+
+#define URL_FILE_NAME "url.txt"
 
 #define DOWNLOAD_TIME 25
 #define MAX_SPEED_SAMPLE_INTERVAL 2000 // milliseconds
@@ -28,6 +30,7 @@ u64 getTimeMs() {
 void format_bandwidth(double bytes_per_sec, char *buf, size_t max_len) {
     const char *units[] = {"bps", "Kbps", "Mbps", "Gbps"};
     int i = 0;
+    // while (bytes_per_sec >= 1024.0 && i < 4) {
     while (bytes_per_sec >= 1024.0 && i < 4) {
         bytes_per_sec /= 1024.0;
         i++;
@@ -45,11 +48,6 @@ static size_t cb(char *data, size_t size, size_t nmemb, void *speed)
     curl_off_t* maxDownloadSpeed = (curl_off_t*)speed;
 
     bytesInLastSecond += realsize;
-
-    if(lastTime == 0) { // prevent the time difference from being unpredictable
-        lastTime = getTimeMs();
-        bytesInLastSecond = 0;
-    }
 
     if(currentTime - lastTime > MAX_SPEED_SAMPLE_INTERVAL) { // calculate time difference
         curl_off_t calculatedSpeed = (bytesInLastSecond * 1000) / (currentTime - lastTime);
@@ -77,11 +75,37 @@ curl_off_t downloadTest(void) {
     curl_off_t maxDownloadSpeed = 0;
     curl_off_t averageSpeed = -1;
 
+    char URLString[512] = "";
+
+    FILE* fp = fopen(URL_FILE_NAME, "r");
+
+    if(fp == NULL) {
+        return -1;
+    }
+
+    // get the file size
+    fseek(fp, 0L, SEEK_END);
+    size_t sz = ftell(fp);
+    fseek(fp, 0L, SEEK_SET);
+
+    if(sz >= 512) {
+        fclose(fp);
+        return -1;
+    }
+
+    fgets(URLString, sizeof(URLString), fp);
+    URLString[strcspn(URLString, "\r\n")] = '\0'; // remove newline
+
+    fclose(fp);
+
+    //clear the screen
+    consoleClear();
+
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     curl = curl_easy_init();
     if (curl) {
-        curl_easy_setopt(curl, CURLOPT_URL, SERVER_URL);
+        curl_easy_setopt(curl, CURLOPT_URL, URLString);
         curl_easy_setopt(curl, CURLOPT_USERAGENT, "libnx curl speedtest/1.0");
         curl_easy_setopt(curl, CURLOPT_TIMEOUT, DOWNLOAD_TIME);
         // Add any other options here.
@@ -93,7 +117,7 @@ curl_off_t downloadTest(void) {
 
         res = curl_easy_perform(curl);
         if (res != CURLE_OK && res != CURLE_OPERATION_TIMEDOUT) {
-            printf("curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+            printf("curl_easy_perform() failed: %s, \tURL: %s", curl_easy_strerror(res), URLString);
             curl_easy_cleanup(curl);
             return -1;
         }
