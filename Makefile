@@ -44,7 +44,7 @@ DATA		:=	data
 INCLUDES	:=	include
 #ROMFS	:=	romfs
 
-SWITCH_IP		:= 192.168.0.144
+SWITCH_IP		:= 192.168.0.161
 
 #---------------------------------------------------------------------------------
 # options for code generation
